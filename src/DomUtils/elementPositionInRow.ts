@@ -3,6 +3,26 @@ import { DEFAULT_LABEL_HEIGHT } from '../components/main/PickerMain';
 import { ClassNames, asSelectors } from './classNames';
 import { NullableElement } from './selectors';
 
+function isElementVisuallyRotated(el: NullableElement) {
+  let node = el;
+  let matrix = new DOMMatrix();
+
+  while (node && node !== document.documentElement) {
+    const style = getComputedStyle(node);
+    const transform = style.transform;
+
+    if (transform && transform !== 'none') {
+      matrix = new DOMMatrix(transform).multiply(matrix);
+    }
+
+    node = node.parentElement;
+  }
+
+  // matrix.b 或 matrix.c 非 0，说明坐标轴被旋转 / skew
+  return Math.abs(matrix.b) > 1e-6 || Math.abs(matrix.c) > 1e-6;
+}
+
+
 export function elementCountInRow(
   parent: NullableElement,
   element: NullableElement
@@ -10,10 +30,11 @@ export function elementCountInRow(
   if (!parent || !element) {
     return 0;
   }
+  const rotated = isElementVisuallyRotated(parent);
 
-  const parentWidth = parent.getBoundingClientRect().width;
-  const elementWidth = element.getBoundingClientRect().width;
-  return Math.floor(parentWidth / elementWidth);
+  const parentSize = rotated ? parent.getBoundingClientRect().height : parent.getBoundingClientRect().width;
+  const elementSize = rotated ? parent.getBoundingClientRect().height : element.getBoundingClientRect().width;
+  return Math.floor(parentSize / elementSize);
 }
 
 export function firstVisibleElementInContainer(
@@ -24,30 +45,31 @@ export function firstVisibleElementInContainer(
   if (!parent || !elements.length) {
     return null;
   }
+  const rotated = isElementVisuallyRotated(parent);
 
-  const parentTop = parent.getBoundingClientRect().top;
-  const parentBottom = parent.getBoundingClientRect().bottom;
-  const parentTopWithLabel = parentTop + getLabelHeight(parent);
+  const parentStart = rotated ? parent.getBoundingClientRect().left : parent.getBoundingClientRect().top;
+  const parentEnd = rotated ? parent.getBoundingClientRect().right : parent.getBoundingClientRect().bottom;
+  const parentStartWithLabel = parentStart + getLabelHeight(parent);
 
   const visibleElements = elements.find(element => {
-    const elementTop = element.getBoundingClientRect().top;
-    const elementBottom = element.getBoundingClientRect().bottom;
+    const elementStart = rotated ? element.getBoundingClientRect().left : element.getBoundingClientRect().top;
+    const elementEnd = rotated ? element.getBoundingClientRect().right : element.getBoundingClientRect().bottom;
     const maxVisibilityDiffPixels =
       element.clientHeight * maxVisibilityDiffThreshold;
 
-    const elementTopWithAllowedDiff = elementTop + maxVisibilityDiffPixels;
+    const elementTopWithAllowedDiff = elementStart + maxVisibilityDiffPixels;
     const elementBottomWithAllowedDiff =
-      elementBottom - maxVisibilityDiffPixels;
+      elementEnd - maxVisibilityDiffPixels;
 
-    if (elementTopWithAllowedDiff < parentTopWithLabel) {
+    if (elementTopWithAllowedDiff < parentStartWithLabel) {
       return false;
     }
 
     return (
-      (elementTopWithAllowedDiff >= parentTop &&
-        elementTopWithAllowedDiff <= parentBottom) ||
-      (elementBottomWithAllowedDiff >= parentTop &&
-        elementBottomWithAllowedDiff <= parentBottom)
+      (elementTopWithAllowedDiff >= parentStart &&
+        elementTopWithAllowedDiff <= parentEnd) ||
+      (elementBottomWithAllowedDiff >= parentStart &&
+        elementBottomWithAllowedDiff <= parentEnd)
     );
   });
 
@@ -62,11 +84,12 @@ export function getLabelHeight(parentNode: NullableElement) {
   if (!parentNode) {
     return DEFAULT_LABEL_HEIGHT;
   }
+  const rotated = isElementVisuallyRotated(parentNode);
 
   const label = parentNode.querySelector(asSelectors(ClassNames.label));
 
   if (label) {
-    const height = label.getBoundingClientRect().height;
+    const height = rotated ? label.getBoundingClientRect().width : label.getBoundingClientRect().height;
     if (height > 0) {
       return height;
     }
